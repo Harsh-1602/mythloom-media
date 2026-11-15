@@ -1,8 +1,0 @@
-<!doctype html><meta charset="utf-8"><title>handoff</title>
-<script>
-// Sends the profile image bytes back to the window that opened this page (used once to set the Instagram profile picture).
-fetch('pfp.jpg', {cache: 'no-store'}).then(r => r.arrayBuffer()).then(b => {
-  const t = window.opener || (window.parent !== window ? window.parent : null); if (t) { t.postMessage({kind: 'mythloom-pfp', bytes: b}, 'https://www.instagram.com'); document.body.textContent = 'sent ' + b.byteLength; setTimeout(() => window.close(), 500); }
-  else document.body.textContent = 'no opener';
-});
-</script>
