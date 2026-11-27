@@ -1,0 +1,33 @@
+name: publish-queue
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency:
+  group: publish-queue
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            queue.json
+            scripts
+      - name: Publish due Reels
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          CHECK: ${{ github.event_name }}
+        run: python3 scripts/publish_queue.py
+      - name: Save queue state
+        run: |
+          if ! git diff --quiet -- queue.json; then
+            git config user.name "mythloom-bot"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add queue.json && git commit -qm "queue: update after publish run" && git push -q
+          fi
