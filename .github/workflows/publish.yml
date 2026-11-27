@@ -1,33 +1,46 @@
 name: publish-queue
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch: {}
 permissions:
   contents: write
+  actions: write
 concurrency:
-  group: publish-queue
+  group: publish-${{ github.event_name }}
   cancel-in-progress: false
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |
             queue.json
             scripts
-      - name: Publish due Reels
+      - name: Publish due Reels (manual/relay runs first sleep until the next item is due)
         env:
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           CHECK: ${{ github.event_name }}
+          RELAY: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
         run: python3 scripts/publish_queue.py
       - name: Save queue state
         run: |
           if ! git diff --quiet -- queue.json; then
             git config user.name "mythloom-bot"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add queue.json && git commit -qm "queue: update after publish run" && git push -q
+            git add queue.json && git commit -qm "queue: update after publish run"
+            git pull -q --rebase && git push -q
+          fi
+      - name: Relay to the next item (a fresh run, so no job exceeds GitHub's 6 h limit)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if python3 -c "import json,sys; q=json.load(open('queue.json')); sys.exit(0 if any(not i.get('done') and i.get('attempts',0)<8 for i in q) else 1)"; then
+            gh workflow run publish.yml -R ${{ github.repository }} && echo "relayed"
+          else
+            echo "queue empty: relay stops"
           fi

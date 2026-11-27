@@ -45,7 +45,17 @@ def publish(item):
     m = call("GET", mid, fields="permalink,timestamp")
     return {"media_id": mid, "permalink": m.get("permalink"), "published_at": m.get("timestamp")}
 
+def wait_for_next(q):
+    """Relay mode: sleep until the next pending item is due (at most MAX_WAIT s), so posting doesn't depend on GitHub cron."""
+    pend = sorted(datetime.fromisoformat(i["at"]) for i in q if not i.get("done") and i.get("attempts", 0) < 8)
+    if not pend: print("relay: nothing pending"); return
+    wait = (pend[0] - datetime.now(timezone.utc)).total_seconds()
+    cap = float(os.environ.get("MAX_WAIT", 5.4 * 3600))
+    print(f"relay: next item in {wait/60:.0f} min; sleeping {max(0, min(wait, cap))/60:.0f} min", flush=True)
+    if wait > 0: time.sleep(min(wait, cap))
+
 def main():
+    if os.environ.get("RELAY") == "1": wait_for_next(json.load(open(QUEUE)))
     if os.environ.get("CHECK") == "workflow_dispatch":   # manual run: prove the secrets work
         print("account check:", call("GET", IGID, fields="username,media_count"))
     q = json.load(open(QUEUE)); now = datetime.now(timezone.utc); changed = False
